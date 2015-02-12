@@ -2,6 +2,7 @@ package com.helwigdev.photogallery;
 
 import android.content.Context;
 import android.graphics.Bitmap;
+import android.media.Image;
 import android.os.AsyncTask;
 import android.os.Bundle;
 import android.os.Handler;
@@ -70,6 +71,15 @@ public class PhotoGalleryFragment extends Fragment {
 			GalleryItem item = getItem(position);
 			mThumbnailThread.queueThumbnail(imageView, item.getUrl());
 
+			//get the min and max for image preloading
+			//preloading 10 images cause that's just why
+			int startPos = position - 10;
+			if(startPos < 0) startPos=0;
+			int endPos = position + 10;
+			if(endPos > mItems.size()){
+				endPos = mItems.size();
+			}
+
 			return convertView;
 		}
 	}
@@ -126,6 +136,20 @@ public class PhotoGalleryFragment extends Fragment {
 				if((totalItemCount - visibleItemCount) <= (firstVisibleItem + mVisibleThreshold) && !loading){
 					new FetchItemsTask().execute();
 					loading = true;
+				}
+
+				int nextInvisible = firstVisibleItem + visibleItemCount;
+				int lastToCache = nextInvisible + 50;
+
+				if(lastToCache > totalItemCount){
+					lastToCache = totalItemCount;
+				}
+				if(totalItemCount > 0) {
+					for (int i = nextInvisible; i < lastToCache; i++) {
+						mThumbnailThread.queuePrecache(null,
+								mItems.get(i).getUrl());//precache next 10 images
+						//no need to go backwards - they will have already been cached
+					}
 				}
 			}
 		});
