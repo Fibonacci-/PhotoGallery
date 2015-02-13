@@ -18,6 +18,7 @@ import java.util.Map;
  * Created by Tyler on 2/12/2015.
  * Copyright 2015 by Tyler Helwig
  */
+@SuppressLint("HandlerLeak")
 public class ThumbnailDownloader<Token> extends HandlerThread {
 	private static final String TAG = "ThumbnailDownloader";
 	private static final int MESSAGE_DOWNLOAD = 0;
@@ -43,7 +44,7 @@ public class ThumbnailDownloader<Token> extends HandlerThread {
 		mResponseHandler = responseHandler;
 	}
 
-	@SuppressLint("HandlerLeak")
+
 	@Override
 	protected void onLooperPrepared() {
 		mHandler = new Handler() {

@@ -1,21 +1,34 @@
 package com.helwigdev.photogallery;
 
+import android.annotation.TargetApi;
+import android.app.Activity;
+import android.app.SearchManager;
+import android.app.SearchableInfo;
+import android.content.ComponentName;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.media.Image;
 import android.os.AsyncTask;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
+import android.preference.PreferenceManager;
 import android.support.annotation.Nullable;
 import android.support.v4.app.Fragment;
+import android.support.v7.app.ActionBarActivity;
 import android.util.Log;
 import android.view.LayoutInflater;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
 import android.widget.ArrayAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
+import android.widget.SearchView;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -30,6 +43,7 @@ public class PhotoGalleryFragment extends Fragment {
 	GridView mGridView;
 	ArrayList<GalleryItem> mItems;
 	ThumbnailDownloader<ImageView> mThumbnailThread;
+	boolean isSearch = false;
 
 	int page = 1;
 	private int mVisibleThreshold = 3;//cause why not
@@ -39,8 +53,20 @@ public class PhotoGalleryFragment extends Fragment {
 
 		@Override
 		protected ArrayList<GalleryItem> doInBackground(Void... params) {
-			return new FlickrFetchr().fetchItems(page++);
+			Activity activity = getActivity();
+			if(activity == null) return new ArrayList<>();
 
+			String query = PreferenceManager.getDefaultSharedPreferences(activity).getString(FlickrFetchr.PREF_SEARCH_QUERY, null);
+
+			if(query != null){
+				isSearch = true;
+				//mItems.clear();
+				return new FlickrFetchr().search(query);
+			} else {
+				isSearch = false;
+				//mItems.clear();
+				return new FlickrFetchr().fetchItems(page++);
+			}
 		}
 
 		@Override
@@ -89,8 +115,10 @@ public class PhotoGalleryFragment extends Fragment {
 		super.onCreate(savedInstanceState);
 
 		setRetainInstance(true);
+		setHasOptionsMenu(true);
 		mItems = new ArrayList<>();
-		new FetchItemsTask().execute();
+		updateItems();
+
 
 		mThumbnailThread = new ThumbnailDownloader<>(new Handler());
 		mThumbnailThread.setListener(new ThumbnailDownloader.Listener<ImageView>() {
@@ -104,6 +132,10 @@ public class PhotoGalleryFragment extends Fragment {
 		mThumbnailThread.start();
 		mThumbnailThread.getLooper();
 		Log.i(TAG, "Background thread started OK");
+	}
+
+	public void updateItems(){
+		new FetchItemsTask().execute();
 	}
 
 	@Override
@@ -133,22 +165,26 @@ public class PhotoGalleryFragment extends Fragment {
 
 			@Override
 			public void onScroll(AbsListView view, int firstVisibleItem, int visibleItemCount, int totalItemCount) {
-				if((totalItemCount - visibleItemCount) <= (firstVisibleItem + mVisibleThreshold) && !loading){
-					new FetchItemsTask().execute();
-					loading = true;
-				}
+				if(!isSearch) {
+					if ((totalItemCount - visibleItemCount) <= (firstVisibleItem + mVisibleThreshold) && !loading) {
 
-				int nextInvisible = firstVisibleItem + visibleItemCount;
-				int lastToCache = nextInvisible + 50;
+						new FetchItemsTask().execute();
+						loading = true;
+					}
 
-				if(lastToCache > totalItemCount){
-					lastToCache = totalItemCount;
-				}
-				if(totalItemCount > 0) {
-					for (int i = nextInvisible; i < lastToCache; i++) {
-						mThumbnailThread.queuePrecache(null,
-								mItems.get(i).getUrl());//precache next 10 images
-						//no need to go backwards - they will have already been cached
+					int nextInvisible = firstVisibleItem + visibleItemCount;
+					int lastToCache = nextInvisible + 50;
+
+					if (lastToCache > totalItemCount) {
+						lastToCache = totalItemCount;
+					}
+					if (totalItemCount > 0) {
+						for (int i = nextInvisible; i < lastToCache; i++) {
+							mThumbnailThread.queuePrecache(null,
+									mItems.get(i).getUrl());//precache next 10 images
+							//no need to go backwards - they will have already been cached
+							//TODO this will be stopped as soon as the screen is no longer loading. New thread to do this function?
+						}
 					}
 				}
 			}
@@ -175,5 +211,60 @@ public class PhotoGalleryFragment extends Fragment {
 		loading = false;
 	}
 
+	@Override
+	@TargetApi(11)
+	public boolean onOptionsItemSelected(MenuItem item) {
+		switch(item.getItemId()){
+			case R.id.menu_item_search:
+				getActivity().onSearchRequested();
+				return true;
+			case R.id.menu_item_clear:
+				PreferenceManager.getDefaultSharedPreferences(getActivity())
+						.edit()
+						.putString(FlickrFetchr.PREF_SEARCH_QUERY, null)
+						.commit();
+				isSearch = false;
 
+				updateItems();
+				return true;
+			case R.id.menu_item_toggle_polling:
+				boolean shouldStartAlarm = !PollService.isServiceAlarmOn(getActivity());
+				PollService.setServiceAlarm(getActivity(), shouldStartAlarm);
+				if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB){
+					getActivity().invalidateOptionsMenu();
+				}
+				return true;
+			default:
+				return super.onOptionsItemSelected(item);
+		}
+
+	}
+
+	@Override
+	public void onPrepareOptionsMenu(Menu menu) {
+		super.onPrepareOptionsMenu(menu);
+
+		MenuItem toggleItem = menu.findItem(R.id.menu_item_toggle_polling);
+		if(PollService.isServiceAlarmOn(getActivity())){
+			toggleItem.setTitle(R.string.stop_polling);
+		} else {
+			toggleItem.setTitle(R.string.start_polling);
+		}
+	}
+
+	@Override
+	public void onCreateOptionsMenu(Menu menu, MenuInflater inflater) {
+		super.onCreateOptionsMenu(menu, inflater);
+		inflater.inflate(R.menu.fragment_photo_gallery, menu);
+		if(Build.VERSION.SDK_INT >= Build.VERSION_CODES.HONEYCOMB){
+			MenuItem searchItem = menu.findItem(R.id.menu_item_search);
+			SearchView searchView = (SearchView) searchItem.getActionView();
+
+			SearchManager searchManager = (SearchManager) getActivity().getSystemService(Context.SEARCH_SERVICE);
+			ComponentName name = getActivity().getComponentName();
+			SearchableInfo searchInfo = searchManager.getSearchableInfo(name);
+
+			//fuckit searchView.setSearchableInfo(searchInfo);
+		}
+	}
 }
