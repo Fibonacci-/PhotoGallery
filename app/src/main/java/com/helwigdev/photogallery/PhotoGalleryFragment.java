@@ -9,6 +9,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.media.Image;
+import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
 import android.os.Bundle;
@@ -25,6 +26,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.AbsListView;
+import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.GridView;
 import android.widget.ImageView;
@@ -37,7 +39,7 @@ import java.util.ArrayList;
  * Created by Tyler on 2/11/2015.
  * All code herein copyright Helwig Development 2/11/2015
  */
-public class PhotoGalleryFragment extends Fragment {
+public class PhotoGalleryFragment extends VisibleFragment {
 	private static final String TAG = "PhotoGalleryFragment";
 
 	GridView mGridView;
@@ -189,6 +191,19 @@ public class PhotoGalleryFragment extends Fragment {
 				}
 			}
 		});
+
+		mGridView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+			@Override
+			public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
+				GalleryItem item = mItems.get(position);
+				Uri photoPageUri = Uri.parse(item.getPhotoPageUrl());
+				Intent i = new Intent(getActivity(), PhotoPageActivity.class);
+				i.setData(photoPageUri);
+
+				startActivity(i);
+			}
+		});
+
 		setupAdapter();
 
 		return v;
